@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+deploy.log
+.env
+deploy.sh
+bot.db

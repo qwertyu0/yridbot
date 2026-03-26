@@ -2,6 +2,7 @@ aiofiles==25.1.0
 aiogram==3.26.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.3
+aiohttp_socks==0.11.0
 aiosignal==1.4.0
 annotated-types==0.7.0
 attrs==26.1.0
@@ -14,6 +15,7 @@ multidict==6.7.1
 propcache==0.4.1
 pydantic==2.12.5
 pydantic_core==2.41.5
+python-socks==2.8.1
 requests==2.33.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
