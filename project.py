@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sqlite3
 import requests
 import re
@@ -11,10 +12,13 @@ from aiogram.client.session.aiohttp import AiohttpSession
 # =========================
 # НАСТРОЙКИ
 # =========================
-TOKEN = "8652819384:AAG6aioB9qL2U-I5wnOoxDSnTMIhBeprQqY"
+TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 7998832126
 
-# Xray SOCKS5 proxy
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN is not set")
+
+# Локальный SOCKS5-прокси от Xray
 session = AiohttpSession(proxy="socks5://127.0.0.1:10808")
 bot = Bot(token=TOKEN, session=session)
 dp = Dispatcher()
@@ -166,11 +170,9 @@ def clean_response(result: str) -> str:
     return "\n".join(filtered)
 
 
-
 # =========================
 # OLLAMA
 # =========================
-
 def analyze_with_ollama(text: str) -> str:
     try:
         response = requests.post(
@@ -207,19 +209,6 @@ def analyze_with_ollama(text: str) -> str:
     except Exception as e:
         return f"Ошибка ИИ: {e}"
 
-def clean_response(result: str) -> str:
-    lines = result.splitlines()
-    filtered = []
-
-    for line in lines:
-        line = line.strip()
-        if line.startswith("Статья:") or line.startswith("Описание:"):
-            filtered.append(line)
-
-    if not filtered:
-        return "Статья: Не определено\nОписание: Недостаточно данных для точного определения статьи."
-
-    return "\n".join(filtered)
 
 # =========================
 # СТАРТ
@@ -254,13 +243,11 @@ async def handle(message: types.Message):
 
     mode = user_mode.get(user_id, "menu")
 
-    # --- ВХОД В АДМИНКУ ---
     if text == "/admin" and user_id == ADMIN_ID:
         user_mode[user_id] = "admin"
         await message.answer("Админ панель", reply_markup=admin_menu())
         return
 
-    # --- АДМИНКА ---
     if mode == "admin":
         if text == "Список пользователей":
             await message.answer(f"Всего пользователей: {get_users_count()}")
@@ -294,7 +281,6 @@ async def handle(message: types.Message):
             await message.answer("Меню", reply_markup=main_menu())
             return
 
-    # --- РАССЫЛКА ---
     if mode == "broadcast" and user_id == ADMIN_ID:
         sent_count = 0
 
@@ -312,7 +298,6 @@ async def handle(message: types.Message):
         )
         return
 
-    # --- ПОЛЬЗОВАТЕЛЬСКИЕ РЕЖИМЫ ---
     if text == "Юридический помощник":
         user_mode[user_id] = "helper"
         await message.answer(
@@ -330,7 +315,6 @@ async def handle(message: types.Message):
         await message.answer("Меню", reply_markup=main_menu())
         return
 
-    # --- РЕЖИМ ЮРИСТА ---
     if mode == "helper":
         if text == "Пример":
             await message.answer("Пример:\nЧеловек украл телефон в магазине")
@@ -374,4 +358,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-#хуй
