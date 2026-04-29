@@ -1,13 +1,11 @@
 import asyncio
 import os
 import requests
-from dotenv import load_dotenv
 
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-load_dotenv()
 
 TOKEN = os.getenv("BOT_TOKEN")
 
@@ -17,9 +15,13 @@ if not TOKEN:
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+session = AiohttpSession(proxy="socks5://127.0.0.1:10808")
+bot = Bot(token=TOKEN, session=session)
+dp = Dispatcher()
+
 # состояние
 user_state = {}
-user_last_message = {}
+user_last_message = {}  #чтобы редактировать одно сообщение
 
 # КНОПКИ
 def main_menu():
@@ -85,7 +87,7 @@ async def start(msg: types.Message):
     user_last_message[msg.from_user.id] = sent.message_id
 
 
-# КНОПКИ
+#кнопки
 @dp.callback_query()
 async def callbacks(call: types.CallbackQuery):
     user_id = call.from_user.id
@@ -120,7 +122,8 @@ async def callbacks(call: types.CallbackQuery):
         )
 
 
-# ТЕКСТ
+
+#ТЕКСТ
 @dp.message()
 async def handle(msg: types.Message):
     user_id = msg.from_user.id
@@ -128,22 +131,22 @@ async def handle(msg: types.Message):
 
     law = user_state.get(user_id)
 
+    # режим не выбран
     if not law:
-        await msg.answer("Сначала выбери раздел выше ")
+        await msg.answer("Сначала выбери раздел выше 👆")
         return
 
+    #вызов ии
     await msg.answer("Анализирую...")
 
     result = ask_ai(text, law)
 
     await msg.answer(
-        f"{result}\n\n Не является юридической консультацией"
+        f"{result}\n\n⚠️ Не является юридической консультацией"
     )
-
 
 async def main():
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
