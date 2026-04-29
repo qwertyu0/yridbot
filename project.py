@@ -4,194 +4,144 @@ import requests
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 7998832126
 
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN не установлен")
 
-session = AiohttpSession(proxy="socks5://127.0.0.1:10808")
-bot = Bot(token=TOKEN, session=session)
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-user_mode = {}
+# состояние
+user_state = {}
+user_last_message = {}  #чтобы редактировать одно сообщение
 
-
+# КНОПКИ
 def main_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Юридический помощник")],
-            [KeyboardButton(text="Что-то мб будет хз")]
-        ],
-        resize_keyboard=True
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="УК РФ", callback_data="law_uk")],
+        [InlineKeyboardButton(text="КоАП РФ", callback_data="law_koap")],
+        [InlineKeyboardButton(text="ФЗ РФ", callback_data="law_fz")]
+    ])
 
 
-def helper_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Пример")],
-            [KeyboardButton(text="Помощь")],
-            [KeyboardButton(text="Назад")]
-        ],
-        resize_keyboard=True
-    )
+def back_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅ Назад", callback_data="back")]
+    ])
 
 
-def admin_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Рассылка")],
-            [KeyboardButton(text="Назад")]
-        ],
-        resize_keyboard=True
-    )
-
-
-def clean_response(result: str) -> str:
-    lines = result.splitlines()
-    filtered = []
-
-    for line in lines:
-        line = line.strip()
-        if line.startswith("Статья:") or line.startswith("Описание:"):
-            filtered.append(line)
-
-    if not filtered:
-        return "Статья: Не определено\nОписание: Недостаточно данных для точного определения статьи."
-
-    return "\n".join(filtered)
-
-
-def analyze_with_ollama(text: str) -> str:
+# ИИ
+def ask_ai(text: str, law: str) -> str:
     try:
-        response = requests.post(
+        r = requests.post(
             "http://localhost:11434/api/generate",
             json={
                 "model": "llama3",
                 "prompt": f"""
-Ты юридический помощник по законодательству РФ.
+Ты юридический помощник РФ.
+
+Работай ТОЛЬКО по: {law}
 
 Правила:
-- Отвечай только на русском языке.
-- Отвечай только по законодательству РФ.
-- Не добавляй лишний текст.
-- Не пиши вступления, выводы и советы.
-- Не выдумывай статьи, если данных недостаточно.
-- Если данных недостаточно, пиши:
-Статья: Не определено
-Описание: Недостаточно данных для точного определения статьи.
-
-Формат ответа строго такой:
+- Только РФ
+- Без лишнего текста
+- Формат:
 Статья: ...
 Описание: ...
 
-Описание ситуации:
+Если не уверен:
+Статья: Не определено
+Описание: Недостаточно данных
+
+Ситуация:
 {text}
 """,
                 "stream": False
             },
-            timeout=120
+            timeout=60
         )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", "Ошибка: пустой ответ от ИИ")
-    except Exception as e:
-        return f"Ошибка ИИ: {e}"
+        r.raise_for_status()
+        return r.json().get("response", "Ошибка ИИ")
+    except Exception:
+        return "Ошибка ИИ"
 
 
+# СТАРТ
 @dp.message(CommandStart())
-async def start(message: types.Message):
-    user_id = message.from_user.id
-    user_mode[user_id] = "menu"
+async def start(msg: types.Message):
+    user_state[msg.from_user.id] = None
 
-    await message.answer(
-        "Здарова да",
+    sent = await msg.answer(
+        "Привет \nВыбери раздел:",
         reply_markup=main_menu()
     )
 
+    user_last_message[msg.from_user.id] = sent.message_id
 
+
+#кнопки
+@dp.callback_query()
+async def callbacks(call: types.CallbackQuery):
+    user_id = call.from_user.id
+    message_id = user_last_message.get(user_id)
+
+    if call.data == "back":
+        user_state[user_id] = None
+
+        await bot.edit_message_text(
+            chat_id=user_id,
+            message_id=message_id,
+            text="Привет \nВыбери раздел:",
+            reply_markup=main_menu()
+        )
+        return
+
+    if call.data.startswith("law_"):
+        law_map = {
+            "law_uk": "УК РФ",
+            "law_koap": "КоАП РФ",
+            "law_fz": "ФЗ РФ"
+        }
+
+        law = law_map.get(call.data)
+        user_state[user_id] = law
+
+        await bot.edit_message_text(
+            chat_id=user_id,
+            message_id=message_id,
+            text=f"Выбран режим: {law}\n\nОпишите ситуацию:",
+            reply_markup=back_menu()
+        )
+
+
+
+#ТЕКСТ
 @dp.message()
-async def handle(message: types.Message):
-    user_id = message.from_user.id
-    text = (message.text or "").strip()
+async def handle(msg: types.Message):
+    user_id = msg.from_user.id
+    text = (msg.text or "").strip()
 
-    mode = user_mode.get(user_id, "menu")
+    law = user_state.get(user_id)
 
-    if text == "/admin" and user_id == ADMIN_ID:
-        user_mode[user_id] = "admin"
-        await message.answer("Админ панель", reply_markup=admin_menu())
+    # режим не выбран
+    if not law:
+        await msg.answer("Сначала выбери раздел выше 👆")
         return
 
-    if mode == "admin":
-        if text == "Рассылка":
-            user_mode[user_id] = "broadcast"
-            await message.answer("Отправь сообщение для рассылки")
-            return
+    #вызов ии
+    await msg.answer("Анализирую...")
 
-        if text == "Назад":
-            user_mode[user_id] = "menu"
-            await message.answer("Меню", reply_markup=main_menu())
-            return
+    result = ask_ai(text, law)
 
-    if mode == "broadcast" and user_id == ADMIN_ID:
-        await message.answer(
-            "Рассылка отключена в этой упрощённой версии.",
-            reply_markup=admin_menu()
-        )
-        user_mode[user_id] = "admin"
-        return
-
-    if text == "Юридический помощник":
-        user_mode[user_id] = "helper"
-        await message.answer(
-            "Режим юриста \nОпишите ситуацию:",
-            reply_markup=helper_menu()
-        )
-        return
-
-    if text == "Что-то мб будет хз":
-        await message.answer("Ничо")
-        return
-
-    if text == "Назад":
-        user_mode[user_id] = "menu"
-        await message.answer("Меню", reply_markup=main_menu())
-        return
-
-    if mode == "helper":
-        if text == "Пример":
-            await message.answer("Пример:\nЧеловек украл телефон в магазине")
-            return
-
-        if text == "Помощь":
-            await message.answer(
-                "Опишите ситуацию словами.\n"
-                "Например:\n"
-                "- Человек украл телефон в магазине\n"
-                "- Человек избил другого на улице"
-            )
-            return
-
-        await message.answer("Анализирую...")
-
-        result = analyze_with_ollama(text)
-        result = clean_response(result)
-
-        await message.answer(
-            f"{result}\n\nбебебе."
-        )
-        return
-
-    await message.answer("Выбери режим", reply_markup=main_menu())
-
-
+    await msg.answer(
+        f"{result}\n\n⚠️ Не является юридической консультацией"
+    )
+    
 async def main():
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
