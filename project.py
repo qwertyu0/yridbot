@@ -57,37 +57,55 @@ def back_menu():
 # ИИ
 def ask_ai(text: str, law: str) -> str:
     try:
-        r = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3",
-                "prompt": f"""
+        # поиск похожих фрагментов закона
+        docs = db.similarity_search(text, k=3)
+        context = "\n\n".join([d.page_content for d in docs])
+
+        prompt = f"""
 Ты юридический помощник РФ.
 
-Работай ТОЛЬКО по: {law}
+Работай только по:
+{law}
+
+Используй ТОЛЬКО информацию из контекста.
+
+Контекст:
+{context}
 
 Правила:
 - Только РФ
 - Без лишнего текста
-- Формат:
-Статья: ...
-Описание: ...
-
-Если не уверен:
+- Не пиши советы
+- Не выдумывай статьи
+- Если информации нет:
 Статья: Не определено
 Описание: Недостаточно данных
 
+Формат ответа строго такой:
+
+Статья: ...
+Описание: ...
+
 Ситуация:
 {text}
-""",
+"""
+
+        r = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "llama3",
+                "prompt": prompt,
                 "stream": False
             },
             timeout=60
         )
+
         r.raise_for_status()
+
         return r.json().get("response", "Ошибка ИИ")
-    except Exception:
-        return "Ошибка ИИ"
+
+    except Exception as e:
+        return f"Ошибка ИИ: {e}"
 
 
 # СТАРТ
