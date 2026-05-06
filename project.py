@@ -6,6 +6,22 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
+embedding = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
+
+db = Chroma(
+    persist_directory="db",
+    embedding_function=embedding
+)
+
+docs = db.similarity_search(user_text, k=3)
+
+
+
 
 TOKEN = os.getenv("BOT_TOKEN")
 
